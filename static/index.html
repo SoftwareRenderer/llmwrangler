@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style>
+body {
+    color: #e0e0e0;
+    margin: 1rem;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-size: 1em;
+    background: linear-gradient(45deg, #0c161d, #341e0d, #07232d);
+    background-size: 400% 400%;
+    animation: gradient 30s ease infinite;
+    height: 100vh;
+}
+
+@keyframes gradient {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+h2 {
+    font-size: 1em;
+    padding-bottom: 2em;
+}
+a:visited {
+    color: #02DADB;
+}
+</style>
+<script>
+function newHost(host) {
+    return fetch("api/register", {
+        method: "POST",
+        body: JSON.stringify({host: host}),
+    });
+}
+
+function removeHost(host) {
+    return fetch("api/unregister", {
+        method: "POST",
+        body: JSON.stringify({host: host}),
+    }).then(() => {
+        showHosts();
+    });
+}
+
+async function showHosts() {
+    let res = await fetch("api/hosts");
+    let data = await res.json();
+    let buf = "<ul>";
+    for(let i in data) {
+        buf += `<li><button onclick="removeHost('${i}');">Remove</button> ${i} - ${Math.round(data[i]/1000000)}ms</li>`;
+    }
+    buf += "</ul>"
+    document.querySelector("#hosts").innerHTML = buf;
+}
+
+async function main() {
+    showHosts();
+
+    document.querySelector('#host').addEventListener("keypress", async evt => {
+        if(evt.key == "Enter") {
+            await newHost(document.querySelector('#host').value);
+            showHosts();
+            document.querySelector('#host').value = '';
+            evt.preventDefault();
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', main);
+</script>
+</head>
+<body>
+
+    <h1>LLM Wrangler</h1>
+    <h2>Connecting Clients to llama.cpp Hosts</h2>
+
+    New Host: <input id="host" type="text" />
+
+    <div id="hosts"></div>
+
+</body>
+</html>
+

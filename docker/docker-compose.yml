@@ -1,0 +1,9 @@
+services:
+  llmwrangler:
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+    environment:
+      - LISTEN=7000
+      - LLMHOST=localhost:8080
+    network_mode: "host"
