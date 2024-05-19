@@ -1,4 +1,4 @@
-# LLaMA Wrangler (a Llama.cpp multiplexer)
+# LLaMA Wrangler (a llama.cpp multiplexer)
 <p align="center">
   <img width="256" height="256" src="https://github.com/SoftwareRenderer/llmwrangler/assets/138734813/7ca3b4a3-809b-44e9-94be-2dff5892019c">
 </p>
