@@ -1,4 +1,7 @@
 # LLaMA Wrangler (a Llama.cpp multiplexer)
+<p align="center">
+  <img width="256" height="256" src="https://github.com/SoftwareRenderer/llmwrangler/assets/138734813/7ca3b4a3-809b-44e9-94be-2dff5892019c">
+</p>
 
 This improves hardware utilization for projects that implement [llama.cpp](https://github.com/ggerganov/llama.cpp/). The idea is that workload should be assigned to the fastest machine until response times get slow enough to assign work to the rest of the workers.
 
