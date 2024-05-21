@@ -1,15 +1,41 @@
-# LLaMA Wrangler (a llama.cpp multiplexer)
-<p align="center">
-  <img width="256" height="256" src="https://github.com/SoftwareRenderer/llmwrangler/assets/138734813/7ca3b4a3-809b-44e9-94be-2dff5892019c">
-</p>
+# LLaMA Wrangler
 
-This improves hardware utilization for projects that implement [llama.cpp](https://github.com/ggerganov/llama.cpp/). The idea is that workload should be assigned to the fastest machine until response times get slow enough to assign work to the rest of the workers.
+`llmwrangler` passes API requests through to [llama.cpp](https://github.com/ggerganov/llama.cpp/)'s [server](https://github.com/ggerganov/llama.cpp/tree/master/examples/server), routing requests to the least-encumbered instance.
 
-This only works for the plain llama.cpp `/completion` endpoint.
+This might be useful if you have a variety of hardware and want to maximize total throughput.
 
-TODO: Automate management of hosts
+```mermaid
+flowchart LR
+    Client[HTTP Client] -- llama.cpp server\nAPI request --> Wrangler{llmwrangler}
+    Wrangler --> A[(llama.cpp)]
+    Wrangler --> B[(llama.cpp)]
+    Wrangler --> C[(llama.cpp)]
+```
 
-## How to use (Docker)
-1. Update docker-compose with your preferred LISTEN port (default: 7000), and optionally a llama.cpp host
-2. Start the container
-3. Navigate to http://localhost:7000 to add/remove hosts
+TODO:
+- [ ] Automate management based on host online/offline status
+
+## Build
+1. Run `go build`
+
+## Usage
+```
+Usage of ./llmwrangler:
+  -listen int
+        Port to listen on (default 7000)
+  -llmhost string
+        (optional) hostname:port for llama.cpp server
+  -warmup-prompt-file string
+        Prompt text file used to warm up llama.cpp (default "prompt.txt")
+```
+
+Example: `./llmwrangler -listen 7000 -warmup-prompt-file /prompts/warmup_prompt.tpl -llmhost llamacppHostname:8080`
+
+After the wrangler has started, navigate to http://localhost:7000/wrangler to add/remove llama.cpp server hosts. 
+
+## Premise and Strategy
+I'm a bit desperate for more tokens-per-second from llama.cpp, and my old 2017 server CPUs can add 20 t/s of throughput.
+
+Given that a GPU can respond within 300 ms and a (warmed up) CPU takes 3,000 ms, we can count backlogged requests for the GPU until `#_of_requests` * `response_time` exceeds the CPU response time. When the GPU is sufficiently backlogged, the CPU handles a little bit of overflow.
+
+Warming up the llama.cpp KV cache with your prompt is necessary to improve response time for the first N requests, where N is the number of slots configured in llama.cpp. Without this warmup, initial response times would be so high that it would never be worth using a CPU for this purpose. `llmwrangler` handles this warmup by running N+1 requests: N to fill the cache and 1 more to get the warmed up response time.
