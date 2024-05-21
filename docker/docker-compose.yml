@@ -3,7 +3,7 @@ services:
     build:
       context: ../
       dockerfile: ./docker/Dockerfile
-    environment:
-      - LISTEN=7000
-      - LLMHOST=localhost:8080
+    volumes:
+      - ./prompts:/prompts
+    command: ./llmwrangler -listen 7001 -warmup-prompt-file /prompts/warmup_summary.tpl -llmhost localhost:8081
     network_mode: "host"

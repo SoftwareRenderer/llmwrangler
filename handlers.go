@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -50,9 +51,9 @@ func (lw *LlmWrangler) handleLatency(w http.ResponseWriter, r *http.Request) {
 	minTime := time.Hour * 24
 
 	lw.hostsLock.RLock()
-	for _, time := range lw.hosts {
-		if minTime > time && time != 0 {
-			minTime = time
+	for _, status := range lw.hosts {
+		if minTime > status.ResponseTime && status.ResponseTime != 0 {
+			minTime = status.ResponseTime
 		}
 
 	}
@@ -62,9 +63,7 @@ func (lw *LlmWrangler) handleLatency(w http.ResponseWriter, r *http.Request) {
 	w.Write(out)
 }
 
-func (lw *LlmWrangler) handleCompletion(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-
+func (lw *LlmWrangler) handleLlamacpp(w http.ResponseWriter, r *http.Request) {
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Println(err)
@@ -83,9 +82,11 @@ func (lw *LlmWrangler) handleCompletion(w http.ResponseWriter, r *http.Request) 
 
 	log.Println("Assigned", clientIP, assignedHost)
 	r.Host = assignedHost
-
-	r.URL.Scheme = "http"
 	r.URL.Host = assignedHost
+	r.URL.Scheme = "http"
+	if r.TLS != nil {
+		r.URL.Scheme = "https"
+	}
 
 	r.RequestURI = ""
 	var client = &http.Client{
@@ -119,8 +120,46 @@ func (lw *LlmWrangler) handleCompletion(w http.ResponseWriter, r *http.Request) 
 		}
 
 	}
+}
+
+func (lw *LlmWrangler) handleCompletion(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
 
 	lw.hostsLock.Lock()
-	lw.hosts[r.Host] = time.Since(startTime)
+	status, hostOk := lw.hosts[r.Host]
+	if hostOk {
+		status.UseSlot()
+		lw.hosts[r.Host] = status
+	}
 	lw.hostsLock.Unlock()
+
+	lw.handleLlamacpp(w, r)
+
+	lw.hostsLock.Lock()
+	status, hostOk = lw.hosts[r.Host]
+	if hostOk {
+		status.FreeSlot()
+		status.ResponseTime = time.Since(startTime)
+	}
+	lw.hosts[r.Host] = status
+	lw.hostsLock.Unlock()
+}
+
+func (lw *LlmWrangler) handleTest(w http.ResponseWriter, r *http.Request) {
+	host := r.PathValue("host")
+	count, _ := strconv.Atoi(r.PathValue("count"))
+
+	responseTime := make(chan int64)
+	for i := 0; i < count; i++ {
+		go lw.warmupLlama(host, responseTime)
+	}
+
+	var totalTime int64
+	for i := 0; i < count; i++ {
+		totalTime += <-responseTime
+	}
+
+	averageTime := int(totalTime) / count
+
+	w.Write([]byte("Average: " + strconv.Itoa(averageTime) + "ms"))
 }

@@ -1,28 +1,30 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"log"
 	"os"
-	"strconv"
 )
 
 func main() {
+	listenPort := flag.Int("listen", 7000, "Port to listen on")
+	warmupPromptFile := flag.String("warmup-prompt-file", "prompt.txt", "Prompt text file used to warm up llama.cpp")
+	llmHost := flag.String("llmhost", "", "hostname:port for llama.cpp server")
+	flag.Parse()
 
-	listenPort := 7000
-	if os.Getenv("LISTEN") != "" {
-		var err error
-		listenPort, err = strconv.Atoi(os.Getenv("LISTEN"))
-		if err != nil {
-			log.Fatal(err)
-		}
+	if _, err := os.Stat(*warmupPromptFile); errors.Is(err, os.ErrNotExist) {
+		log.Fatal("warmup-prompt-file does not exist: ", *warmupPromptFile)
 	}
 
 	wrangler := LlmWrangler{
-		ListenPort: listenPort,
+		ListenPort:       *listenPort,
+		warmupPromptFile: *warmupPromptFile,
 	}
 	wrangler.Init()
-	if os.Getenv("LLMHOST") != "" {
-		wrangler.RegisterHost(os.Getenv("LLMHOST"))
+
+	if *llmHost != "" {
+		wrangler.RegisterHost(*llmHost)
 	}
 
 	wrangler.Start()

@@ -55,7 +55,7 @@ async function showHosts() {
     let data = await res.json();
     let buf = "<ul>";
     for(let i in data) {
-        buf += `<li><button onclick="removeHost('${i}');">Remove</button> ${i} - ${Math.round(data[i]/1000000)}ms</li>`;
+        buf += `<li><button onclick="removeHost('${i}');">Remove</button> ${i} - ${Math.round(data[i].responseTime/1000000)}ms</li>`;
     }
     buf += "</ul>"
     document.querySelector("#hosts").innerHTML = buf;

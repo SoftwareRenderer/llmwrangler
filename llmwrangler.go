@@ -10,24 +10,29 @@ import (
 
 type LlmWrangler struct {
 	ListenPort        int
-	hosts             map[string]time.Duration
+	hosts             map[string]HostStatus
 	hostsLock         sync.RWMutex
 	mapClientHost     map[string]string
 	mapClientHostLock sync.RWMutex
+	warmupPromptFile  string
 }
 
 func (lw *LlmWrangler) Init() {
-	lw.hosts = make(map[string]time.Duration)
+	lw.hosts = make(map[string]HostStatus)
 	lw.mapClientHost = make(map[string]string)
 }
 
 func (lw *LlmWrangler) Start() {
-	http.Handle("/", http.FileServer(http.Dir("./static")))
-	http.HandleFunc("/api/register", lw.handleRegister)
-	http.HandleFunc("/api/unregister", lw.handleUnregister)
-	http.HandleFunc("/api/hosts", lw.handleHosts)
-	http.HandleFunc("/api/latency", lw.handleLatency)
+	http.Handle("/wrangler/", http.StripPrefix("/wrangler/", http.FileServer(http.Dir("./static"))))
+	http.HandleFunc("/wrangler/api/register", lw.handleRegister)
+	http.HandleFunc("/wrangler/api/unregister", lw.handleUnregister)
+	http.HandleFunc("/wrangler/api/hosts", lw.handleHosts)
+	http.HandleFunc("/wrangler/api/latency", lw.handleLatency)
+	http.HandleFunc("GET /wrangler/api/test/{host}/{count}", lw.handleTest)
+
+	http.HandleFunc("/", lw.handleLlamacpp)
 	http.HandleFunc("/completion", lw.handleCompletion)
+	http.HandleFunc("/v1/chat/completions", lw.handleCompletion)
 
 	err := http.ListenAndServe(":"+strconv.Itoa(lw.ListenPort), nil)
 	if err != nil {
@@ -37,9 +42,11 @@ func (lw *LlmWrangler) Start() {
 
 func (lw *LlmWrangler) RegisterHost(host string) {
 	lw.hostsLock.Lock()
-	lw.hosts[host] = 0
+	lw.hosts[host] = HostStatus{}
 	lw.hostsLock.Unlock()
 	log.Println("Host Registered:", host)
+
+	lw.WarmupHost(host)
 }
 
 func (lw *LlmWrangler) UnregisterHost(host string) {
@@ -54,9 +61,10 @@ func (lw *LlmWrangler) getLeastBusyHost() string {
 	leastBusy := ""
 
 	lw.hostsLock.RLock()
-	for host, time := range lw.hosts {
-		if time <= leastTime {
-			leastTime = time
+	for host, status := range lw.hosts {
+		totalResponseTime := status.ResponseTime + status.ResponseTimeDebt
+		if totalResponseTime <= leastTime && status.ResponseTime != 0 {
+			leastTime = totalResponseTime
 			leastBusy = host
 		}
 	}
