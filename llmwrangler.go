@@ -30,9 +30,9 @@ func (lw *LlmWrangler) Start() {
 	http.HandleFunc("/wrangler/api/latency", lw.handleLatency)
 	http.HandleFunc("GET /wrangler/api/test/{host}/{count}", lw.handleTest)
 
-	http.HandleFunc("/", lw.handleLlamacpp)
-	http.HandleFunc("/completion", lw.handleCompletion)
-	http.HandleFunc("/v1/chat/completions", lw.handleCompletion)
+	http.HandleFunc("/", lw.handleHostAssignment(lw.handleLlamacpp))
+	http.HandleFunc("/completion", lw.handleHostAssignment(lw.handleCompletion))
+	http.HandleFunc("/v1/chat/completions", lw.handleHostAssignment(lw.handleCompletion))
 
 	err := http.ListenAndServe(":"+strconv.Itoa(lw.ListenPort), nil)
 	if err != nil {

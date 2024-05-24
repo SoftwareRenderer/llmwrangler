@@ -63,6 +63,28 @@ func (lw *LlmWrangler) handleLatency(w http.ResponseWriter, r *http.Request) {
 	w.Write(out)
 }
 
+func (lw *LlmWrangler) handleHostAssignment(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		clientIP := r.Header.Get("X-Real-IP")
+		assignedHost := lw.AssignLeastBusyHost(clientIP)
+		if assignedHost == "" {
+			log.Println("Backend unavailable")
+			http.Error(w, "Backend unavailable", http.StatusBadGateway)
+			return
+		}
+
+		log.Println("Assigned", clientIP, assignedHost)
+		r.Host = assignedHost
+		r.URL.Host = assignedHost
+		r.URL.Scheme = "http"
+		if r.TLS != nil {
+			r.URL.Scheme = "https"
+		}
+
+		handler(w, r)
+	}
+}
+
 func (lw *LlmWrangler) handleLlamacpp(w http.ResponseWriter, r *http.Request) {
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -71,22 +93,6 @@ func (lw *LlmWrangler) handleLlamacpp(w http.ResponseWriter, r *http.Request) {
 
 	reader := io.NopCloser(bytes.NewBuffer(b))
 	r.Body = reader
-
-	clientIP := r.Header.Get("X-Real-IP")
-	assignedHost := lw.AssignLeastBusyHost(clientIP)
-	if assignedHost == "" {
-		log.Println("Backend unavailable")
-		http.Error(w, "Backend unavailable", http.StatusBadGateway)
-		return
-	}
-
-	log.Println("Assigned", clientIP, assignedHost)
-	r.Host = assignedHost
-	r.URL.Host = assignedHost
-	r.URL.Scheme = "http"
-	if r.TLS != nil {
-		r.URL.Scheme = "https"
-	}
 
 	r.RequestURI = ""
 	var client = &http.Client{
@@ -122,18 +128,40 @@ func (lw *LlmWrangler) handleLlamacpp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type peekResponseWriter struct {
+	w          http.ResponseWriter
+	statusCode int
+}
+
+func (p *peekResponseWriter) Header() http.Header {
+	return p.w.Header()
+}
+
+func (p *peekResponseWriter) Write(b []byte) (int, error) {
+	return p.w.Write(b)
+}
+
+func (p *peekResponseWriter) WriteHeader(code int) {
+	p.statusCode = code
+	p.w.WriteHeader(code)
+}
+
 func (lw *LlmWrangler) handleCompletion(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
 	lw.hostsLock.Lock()
 	status, hostOk := lw.hosts[r.Host]
-	if hostOk {
-		status.UseSlot()
-		lw.hosts[r.Host] = status
+	if !hostOk {
+		http.Error(w, "Host not available: "+r.Host, http.StatusBadGateway)
+		return
 	}
+	status.UseSlot()
+	lw.hosts[r.Host] = status
 	lw.hostsLock.Unlock()
 
-	lw.handleLlamacpp(w, r)
+	wp := &peekResponseWriter{w, http.StatusOK}
+
+	lw.handleLlamacpp(wp, r)
 
 	lw.hostsLock.Lock()
 	status, hostOk = lw.hosts[r.Host]

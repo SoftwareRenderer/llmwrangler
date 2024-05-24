@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -70,10 +71,12 @@ func (lw *LlmWrangler) WarmupHost(host string) {
 func (lw *LlmWrangler) warmupLlama(host string, responseTime chan int64) error {
 	lw.hostsLock.Lock()
 	status, hostOk := lw.hosts[host]
-	if hostOk {
-		status.UseSlot()
-		lw.hosts[host] = status
+	if !hostOk {
+		lw.hostsLock.Unlock()
+		return errors.New("Host is gone and can't be warmed up: " + host)
 	}
+	status.UseSlot()
+	lw.hosts[host] = status
 	lw.hostsLock.Unlock()
 
 	config := Completion{}
@@ -125,11 +128,13 @@ func (lw *LlmWrangler) warmupLlama(host string, responseTime chan int64) error {
 	loadTime := time.Since(startTime)
 	lw.hostsLock.Lock()
 	status, hostOk = lw.hosts[host]
-	if hostOk {
-		status.FreeSlot()
-		status.ResponseTime = loadTime
-		lw.hosts[host] = status
+	if !hostOk {
+		lw.hostsLock.Unlock()
+		return errors.New("Host is gone and can't be warmed up: " + host)
 	}
+	status.FreeSlot()
+	status.ResponseTime = loadTime
+	lw.hosts[host] = status
 	lw.hostsLock.Unlock()
 
 	responseTime <- loadTime.Milliseconds()
